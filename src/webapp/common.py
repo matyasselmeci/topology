@@ -148,3 +148,12 @@ def trim_space(s: str) -> str:
 
 def email_to_id(email: str) -> str:
     return hashlib.sha1(email.strip().lower().encode()).hexdigest()
+
+
+def gen_id(instr: Union[str, bytes]) -> int:
+    """Return a 32-bit numeric ID that won't collide with any existing hardcoded IDs in the imported data."""
+    offset = 1006000  # imported downtime IDs end around 1005500
+    mod = 0x100000000 - offset
+    instr_b = instr.encode("utf-8", "ignore") if isinstance(instr, str) else instr
+    return int(hashlib.md5(instr_b).hexdigest(), 16) % mod + offset
+
