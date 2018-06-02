@@ -21,6 +21,7 @@ from argparse import ArgumentParser
 
 import anymarkup
 import os
+import pickle
 import pprint
 import sys
 from pathlib import Path
@@ -75,19 +76,38 @@ def get_topology(indir="../topology", contacts_data=None):
         site_info = anymarkup.parse_file(site_path)
         id_ = site_info["ID"]
         topology.add_site(facility, name, id_, site_info)
-    for yaml_path in root.glob("*/*/*.yaml"):
-        facility, site, name = yaml_path.parts[-3:]
-        if name == "SITE.yaml": continue
-        if name.endswith("_downtime.yaml"): continue
 
-        name = name.replace(".yaml", "")
-        rg = anymarkup.parse_file(yaml_path)
-        downtime_yaml_path = yaml_path.with_name(name + "_downtime.yaml")
-        downtimes = None
-        if downtime_yaml_path.exists():
-            downtimes = ensure_list(anymarkup.parse_file(downtime_yaml_path))
+    if os.path.exists(root/"rgs.p") and os.path.exists(root/"downtimes_l.p"):
+        with open(root/"rgs.p", "rb") as f:
+            rgs = pickle.load(f)
+        with open(root/"downtimes_l.p", "rb") as f:
+            downtimes_l = pickle.load(f)
+    else:
+        rgs = []
+        downtimes_l = []
+        for yaml_path in root.glob("*/*/*.yaml"):
+            facility, site, name = yaml_path.parts[-3:]
+            if name == "SITE.yaml": continue
+            if name.endswith("_downtime.yaml"): continue
 
+            name = name.replace(".yaml", "")
+            rg = anymarkup.parse_file(yaml_path)
+
+            rgs.append([facility, site, name, rg])
+
+            downtime_yaml_path = yaml_path.with_name(name + "_downtime.yaml")
+            downtimes = None
+            if downtime_yaml_path.exists():
+                downtimes = ensure_list(anymarkup.parse_file(downtime_yaml_path))
+            downtimes_l.append([site, name, downtimes])
+        with open(root/"rgs.p", "wb") as f:
+            pickle.dump(rgs, f)
+        with open(root/"downtimes_l.p", "wb") as f:
+            pickle.dump(downtimes_l, f)
+
+    for facility, site, name, rg in rgs:
         topology.add_rg(facility, site, name, rg)
+    for site, name, downtimes in downtimes_l:
         if downtimes:
             for downtime in downtimes:
                 topology.add_downtime(site, name, downtime)
