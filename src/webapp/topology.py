@@ -52,7 +52,7 @@ class Site(object):
         self.other_data = site_info
         if "ID" in self.other_data:
             del self.other_data["ID"]
-        k = "Default ContactLists"
+        k = "DefaultContactLists"
         if k in self.other_data:
             self.default_contactlists = self.other_data[k]
             del self.other_data[k]
@@ -127,6 +127,8 @@ class Resource(object):
             new_res["FQDNAliases"] = {"FQDNAlias": self.data["FQDNAliases"]}
         if not is_null(self.data, "ContactLists"):
             new_res["ContactLists"] = self._expand_contactlists(self.data["ContactLists"], authorized)
+        elif self.site and not is_null(self.site.default_contactlists):
+            new_res["ContactLists"] = self._expand_contactlists({}, authorized)
         new_res["Name"] = self.name
         if "WLCGInformation" in self.data and isinstance(self.data["WLCGInformation"], dict):
             new_res["WLCGInformation"] = self._expand_wlcginformation(self.data["WLCGInformation"])
@@ -188,6 +190,7 @@ class Resource(object):
     def _expand_contactlists(self, contactlists: Dict, authorized: bool) -> Dict:
         """Return the data structure for an expanded ContactLists for a single Resource."""
         new_contactlists = []
+        contactlists = contactlists.copy()
         if self.site and self.site.default_contactlists:
             for k in self.site.default_contactlists:
                 if k == "Default Contact": continue
