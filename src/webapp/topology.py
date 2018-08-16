@@ -49,15 +49,15 @@ class Site(object):
         self.name = name
         self.id = id
         self.facility = facility
-        self.other_data = site_info
+        self.other_data = site_info.copy()
         if "ID" in self.other_data:
             del self.other_data["ID"]
-        k = "DefaultContactLists"
+        k = "Default Contacts"
         if k in self.other_data:
-            self.default_contactlists = self.other_data[k]
+            self.default_contacts = self.other_data[k]
             del self.other_data[k]
         else:
-            self.default_contactlists = None
+            self.default_contacts = None
 
     def get_tree(self) -> OrderedDict:
         # Sort the other_data
@@ -127,7 +127,7 @@ class Resource(object):
             new_res["FQDNAliases"] = {"FQDNAlias": self.data["FQDNAliases"]}
         if not is_null(self.data, "ContactLists"):
             new_res["ContactLists"] = self._expand_contactlists(self.data["ContactLists"], authorized)
-        elif self.site and not is_null(self.site.default_contactlists):
+        elif self.site and not is_null(self.site.default_contacts):
             new_res["ContactLists"] = self._expand_contactlists({}, authorized)
         new_res["Name"] = self.name
         if "WLCGInformation" in self.data and isinstance(self.data["WLCGInformation"], dict):
@@ -191,16 +191,10 @@ class Resource(object):
         """Return the data structure for an expanded ContactLists for a single Resource."""
         new_contactlists = []
         contactlists = contactlists.copy()
-        if self.site and self.site.default_contactlists:
-            for k in self.site.default_contactlists:
-                if k == "Default Contact": continue
+        if self.site and self.site.default_contacts:
+            for k in ["Administrative Contact", "Security Contact"]:
                 if k not in contactlists:
-                    contactlists[k] = self.site.default_contactlists
-            if "Default Contact" in self.site.default_contactlists:
-                for k in ["Administrative Contact", "Miscellaneous Contact", "Resource Report Contact",
-                          "Security Contact"]:
-                    if k not in contactlists:
-                        contactlists[k] = self.site.default_contactlists["Default Contact"]
+                    contactlists[k] = self.site.default_contacts.copy()
 
         for contact_type, contact_data in contactlists.items():
             if isinstance(contact_data, list):
