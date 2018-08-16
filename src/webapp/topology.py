@@ -201,7 +201,23 @@ class Resource(object):
                           "Security Contact"]:
                     if k not in contactlists:
                         contactlists[k] = self.site.default_contactlists["Default Contact"]
+
         for contact_type, contact_data in contactlists.items():
+            if isinstance(contact_data, list):
+                # new format: convert
+                # - A
+                # - B
+                # - C
+                # into
+                # Primary: A
+                # Secondary: B
+                # Tertiary: C
+                old_contact_data = contact_data.copy()
+                contact_data = {}
+                for k in ["Primary", "Secondary", "Tertiary"]:
+                    if not old_contact_data: break
+                    contact_data[k] = old_contact_data.pop(0)
+
             contact_data = expand_attr_list(contact_data, "ContactRank", ["Name", "ID", "ContactRank"], ignore_missing=True)
             for contact in contact_data:
                 contact_id = contact.pop("ID", None)  # ID is for internal use - don't put it in the results
