@@ -52,6 +52,12 @@ class Site(object):
         self.other_data = site_info
         if "ID" in self.other_data:
             del self.other_data["ID"]
+        k = "Default ContactLists"
+        if k in self.other_data:
+            self.default_contactlists = self.other_data[k]
+            del self.other_data[k]
+        else:
+            self.default_contactlists = None
 
     def get_tree(self) -> OrderedDict:
         # Sort the other_data
@@ -60,10 +66,11 @@ class Site(object):
 
 
 class Resource(object):
-    def __init__(self, name: str, yaml_data: Dict, common_data: CommonData):
+    def __init__(self, name: str, site: Site, yaml_data: Dict, common_data: CommonData):
         self.name = name
         self.service_types = common_data.service_types
         self.common_data = common_data
+        self.site = site
         if not is_null(yaml_data, "Services"):
             self.services = self._expand_services(yaml_data["Services"])
         else:
@@ -181,6 +188,16 @@ class Resource(object):
     def _expand_contactlists(self, contactlists: Dict, authorized: bool) -> Dict:
         """Return the data structure for an expanded ContactLists for a single Resource."""
         new_contactlists = []
+        if self.site and self.site.default_contactlists:
+            for k in self.site.default_contactlists:
+                if k == "Default Contact": continue
+                if k not in contactlists:
+                    contactlists[k] = self.site.default_contactlists
+            if "Default Contact" in self.site.default_contactlists:
+                for k in ["Administrative Contact", "Miscellaneous Contact", "Resource Report Contact",
+                          "Security Contact"]:
+                    if k not in contactlists:
+                        contactlists[k] = self.site.default_contactlists["Default Contact"]
         for contact_type, contact_data in contactlists.items():
             contact_data = expand_attr_list(contact_data, "ContactRank", ["Name", "ID", "ContactRank"], ignore_missing=True)
             for contact in contact_data:
@@ -231,7 +248,7 @@ class ResourceGroup(object):
             try:
                 if not isinstance(res, dict):
                     raise TypeError("expecting a dict")
-                res = Resource(name, res, self.common_data)
+                res = Resource(name, site, res, self.common_data)
                 self.resources_by_name[name] = res
             except (AttributeError, KeyError, TypeError, ValueError) as err:
                 log.exception("Error with resource %s: %r", name, err)
