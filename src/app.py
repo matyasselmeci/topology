@@ -62,7 +62,7 @@ global_data = GlobalData(app.config)
 @app.route('/')
 def homepage():
 
-    return render_template('homepage.tmpl')
+    return render_template('homepage.html')
 
 @app.route('/map/iframe')
 def map():
@@ -72,7 +72,7 @@ def map():
         return text.encode('utf-8', 'surrogateescape').decode('utf-8')
     rgsummary = global_data.get_topology().get_resource_summary()
 
-    return render_template('iframe.tmpl', resourcegroups=rgsummary["ResourceSummary"]["ResourceGroup"])
+    return render_template('iframe.html', resourcegroups=rgsummary["ResourceSummary"]["ResourceGroup"])
 
 
 @app.route('/schema/<xsdfile>')

@@ -1,0 +1,28 @@
+<html>
+<head>
+    <title>OSG Topology Interface</title>
+</head>
+<body>
+
+<h1>OSG Topology Interface</h1>
+<p>
+    In order to use or make changes to the OSG topology, please read the <a
+        href="https://github.com/opensciencegrid/topology/blob/master/README.md">documentation</a>.
+</p>
+
+<a href="https://github.com/opensciencegrid/topology">Source Repo</a><br/>
+<p>XML data:</p>
+<ul>
+    <li><a href="{{ url_for('miscproject_xml') }}?">Projects data</a></li>
+    <li><a href="{{ url_for('miscuser_xml') }}?">User data</a></li>
+    <li><a href="{{ url_for('rgsummary_xml') }}?">Resource topology data</a></li>
+    <li><a href="{{ url_for('rgdowntime_xml') }}?">Resource downtime data</a>
+        (<a href="{{ url_for('rgdowntime_xml') }}?downtime_attrs_showpast=all">with past downtimes</a>)
+    </li>
+    <li><a href="{{ url_for('vosummary_xml') }}?">Virtual Organization data</a></li>
+</ul>
+<p><a href="{{ url_for('downtime_resource_select') }}">Generate a downtime entry for a resource</a></p>
+
+
+</body>
+</html>
