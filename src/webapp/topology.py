@@ -485,6 +485,7 @@ class Topology(object):
         # rgs are keyed by (site_name, rg_name) tuple
         self.rgs = {}  # type: Dict[Tuple[str, str], ResourceGroup]
         self.resources_by_facility = defaultdict(list)
+        self.resources_by_name = {}  # type: Dict[str, Resource]
         self.service_names_by_resource = {}  # type: Dict[str, List[str]]
         self.downtime_path_by_resource = {}
 
@@ -494,6 +495,7 @@ class Topology(object):
             self.rgs[(site_name, name)] = rg
             for r in rg.resources:
                 self.resources_by_facility[facility_name].append(r)
+                self.resources_by_name[r.name] = r
                 self.service_names_by_resource[r.name] = r.service_names
                 self.downtime_path_by_resource[r.name] = f"{facility_name}/{site_name}/{name}_downtime.yaml"
         except (AttributeError, KeyError, ValueError) as err:
