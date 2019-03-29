@@ -497,7 +497,7 @@ class Topology(object):
             for r in rg.resources:
                 self.resources_by_facility[facility_name].append(r)
                 self.resource_by_name[r.name] = r
-                self.resource_by_fqdn[r.fqdn] = r
+                self.resource_by_fqdn[r.fqdn.lower()] = r
                 self.service_names_by_resource[r.name] = r.service_names
                 self.downtime_path_by_resource[r.name] = f"{facility_name}/{site_name}/{name}_downtime.yaml"
         except (AttributeError, KeyError, ValueError) as err:
