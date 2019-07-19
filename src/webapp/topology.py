@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 from enum import Enum
 from logging import getLogger
 import urllib.parse
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 import icalendar
 
@@ -482,8 +482,7 @@ class Topology(object):
         self.common_data = common_data
         self.facilities = {}
         self.sites = {}
-        # rgs are keyed by (site_name, rg_name) tuple
-        self.rgs = {}  # type: Dict[Tuple[str, str], ResourceGroup]
+        self.rgs = {}  # type: Dict[str, ResourceGroup]
         self.resources_by_facility = defaultdict(list)
         self.resource_by_name = {}  # type: Dict[str, Resource]
         self.resource_by_fqdn = {}  # type: Dict[str, Resource]
@@ -493,7 +492,7 @@ class Topology(object):
     def add_rg(self, facility_name, site_name, name, parsed_data):
         try:
             rg = ResourceGroup(name, parsed_data, self.sites[site_name], self.common_data)
-            self.rgs[(site_name, name)] = rg
+            self.rgs[name] = rg
             for r in rg.resources:
                 self.resources_by_facility[facility_name].append(r)
                 self.resource_by_name[r.name] = r
@@ -519,7 +518,7 @@ class Topology(object):
         if filters is None:
             filters = Filters()
         rglist = []
-        for rgkey in sorted(self.rgs.keys(), key=lambda x: x[1].lower()):
+        for rgkey in sorted(self.rgs.keys(), key=lambda x: x.lower()):
             rgval = self.rgs[rgkey]
             assert isinstance(rgval, ResourceGroup)
             rgtree = rgval.get_tree(authorized, filters)
@@ -576,11 +575,11 @@ class Topology(object):
 
         return cal
 
-    def add_downtime(self, sitename: str, rgname: str, downtime: Dict):
+    def add_downtime(self, rgname: str, downtime: Dict):
         try:
-            rg = self.rgs[(sitename, rgname)]
+            rg = self.rgs[rgname]
         except KeyError:
-            log.warning("RG %s/%s does not exist -- skipping downtime", sitename, rgname)
+            log.warning("RG %s does not exist -- skipping downtime", rgname)
             return
         try:
             dt = Downtime(rg, downtime, self.common_data)

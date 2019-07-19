@@ -125,7 +125,7 @@ def get_topology(indir="../topology", contacts_data=None, strict=False):
         topology.add_rg(facility, site, name, rg)
         if downtimes:
             for downtime in downtimes:
-                topology.add_downtime(site, name, downtime)
+                topology.add_downtime(name, downtime)
 
     return topology
 
