@@ -341,7 +341,8 @@ class FQANAuth(AuthMethod):
 class SciTokenAuth(AuthMethod):
     used_in_scitokens_conf = True
 
-    def __init__(self, issuer: str, base_path: str, restricted_path: Optional[str], map_subject: bool):
+    def __init__(self, path: str, issuer: str, base_path: str, restricted_path: Optional[str], map_subject: bool):
+        self.path = path
         self.issuer = issuer
         self.base_path = base_path
         self.restricted_path = restricted_path
@@ -365,7 +366,7 @@ class SciTokenAuth(AuthMethod):
     def get_scitokens_conf_block(self, service_name: str):
         if service_name not in [XROOTD_CACHE_SERVER, XROOTD_ORIGIN_SERVER]:
             raise ValueError(f"service_name must be '{XROOTD_CACHE_SERVER}' or '{XROOTD_ORIGIN_SERVER}'")
-        block = (f"[Issuer {self.issuer} {self._issuer_block_hash()}]\n"
+        block = (f"[Issuer {self.issuer} for {self.path}]\n"
                  f"issuer = {self.issuer}\n"
                  f"base_path = {self.base_path}\n")
         if self.restricted_path:
@@ -399,7 +400,7 @@ class Namespace:
         return self.authz_list and self.authz_list[0].is_public
 
 
-def _parse_authz_scitokens(attributes: Dict, authz: Dict) -> Tuple[AuthMethod, Optional[str]]:
+def _parse_authz_scitokens(path: str, attributes: Dict, authz: Dict) -> Tuple[AuthMethod, Optional[str]]:
     """Parse a SciTokens dict in an authz list for a namespace.  On success, return a SciTokenAuth instance and None;
     on failure, return a NullAuth instance and a string indicating the error.
     """
@@ -420,6 +421,7 @@ def _parse_authz_scitokens(attributes: Dict, authz: Dict) -> Tuple[AuthMethod, O
         errors = errors[:-2]  # chop off last '; '
         return NullAuth(), f"Invalid SciTokens auth {authz}: {errors}"
     return SciTokenAuth(
+        path=path,
         issuer=issuer,
         base_path=base_path,
         restricted_path=restricted_path,
@@ -427,7 +429,7 @@ def _parse_authz_scitokens(attributes: Dict, authz: Dict) -> Tuple[AuthMethod, O
     ), None
 
 
-def _parse_authz_dict(authz: Dict) -> Tuple[AuthMethod, Optional[str]]:
+def _parse_authz_dict(path: str, authz: Dict) -> Tuple[AuthMethod, Optional[str]]:
     """Return the instance of the appropriate AuthMethod from a single item of dict type in an authz list.
     An authz list item can be a dict for FQAN, DN, or SciTokens.
 
@@ -441,7 +443,7 @@ def _parse_authz_dict(authz: Dict) -> Tuple[AuthMethod, Optional[str]]:
         if auth_type == "SciTokens":
             if not isinstance(attributes, dict) or not attributes:
                 return NullAuth(), f"Invalid SciTokens auth {authz}: no attributes"
-            return _parse_authz_scitokens(attributes=attributes, authz=authz)
+            return _parse_authz_scitokens(path=path, attributes=attributes, authz=authz)
         elif auth_type == "FQAN":
             if not attributes:
                 return NullAuth(), f"Invalid FQAN auth {authz}: FQAN missing or empty"
@@ -480,7 +482,7 @@ def _parse_authz_str(authz: str) -> Tuple[AuthMethod, Optional[str]]:
         return NullAuth(), f"Unknown authz list entry {authz}"
 
 
-def parse_authz(authz: Union[str, Dict]) -> Tuple[AuthMethod, Optional[str]]:
+def parse_authz(path: str, authz: Union[str, Dict]) -> Tuple[AuthMethod, Optional[str]]:
     """Return the instance of the appropriate AuthMethod from a single item in an authz list for a namespace.
 
     An authz list item can be a string (for FQAN or DN auth) or dict (FQAN, DN, or SciTokens auth).
@@ -494,7 +496,7 @@ def parse_authz(authz: Union[str, Dict]) -> Tuple[AuthMethod, Optional[str]]:
     # - FQAN: /foobar
     # Accept both.
     if isinstance(authz, dict):
-        return _parse_authz_dict(authz)
+        return _parse_authz_dict(path, authz)
     elif isinstance(authz, str):
         return _parse_authz_str(authz)
     else:
@@ -566,7 +568,7 @@ class StashCache:
     def parse_authz_list(self, path: str, unparsed_authz_list: List[Union[str, Dict]]) -> List[AuthMethod]:
         authz_list = []
         for authz in unparsed_authz_list:
-            parsed_authz, err = parse_authz(authz)
+            parsed_authz, err = parse_authz(path, authz)
             if err:
                 self.errors.add(f"Namespace {path}: {err}")
                 continue
