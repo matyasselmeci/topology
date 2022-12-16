@@ -253,7 +253,7 @@ audience = {allowed_vos_str}
 """
 
     allowed_vos = set()
-    cache_authz_list = []
+    cache_authz_set = set()
 
     for vo_name, stashcache_obj in vos_data.stashcache_by_vo_name.items():
         for namespace in stashcache_obj.namespaces.values():  # type: Namespace
@@ -266,17 +266,17 @@ audience = {allowed_vos_str}
 
             for authz in namespace.authz_list:
                 if authz.used_in_scitokens_conf:
-                    cache_authz_list.append(authz)
+                    cache_authz_set.add(authz)
                     allowed_vos.add(vo_name)
 
     # Older plugin versions require at least one issuer block (SOFTWARE-4389)
-    if not cache_authz_list:
+    if not cache_authz_set:
         dummy_auth = SciTokenAuth(issuer="https://scitokens.org/nonexistent", base_path="/no-issuers-found",
                                   restricted_path=None, map_subject=False)
-        cache_authz_list.append(dummy_auth)
+        cache_authz_set.add(dummy_auth)
 
-    issuer_blocks = [a.get_scitokens_conf_block(XROOTD_CACHE_SERVER) for a in cache_authz_list]
-    issuer_blocks_str = "\n".join(issuer_blocks)
+    issuer_blocks = [a.get_scitokens_conf_block(XROOTD_CACHE_SERVER) for a in cache_authz_set]
+    issuer_blocks_str = "\n".join(sorted(issuer_blocks))
     allowed_vos_str = ", ".join(sorted(allowed_vos))
 
     return template.format(**locals()).rstrip() + "\n"
@@ -391,7 +391,7 @@ audience = {allowed_vos_str}
 """
 
     allowed_vos = set()
-    origin_authz_list = []
+    origin_authz_set = set()
 
     for vo_name, stashcache_obj in vos_data.stashcache_by_vo_name.items():
         for namespace in stashcache_obj.namespaces.values():
@@ -404,17 +404,17 @@ audience = {allowed_vos_str}
 
             for authz in namespace.authz_list:
                 if authz.used_in_scitokens_conf:
-                    origin_authz_list.append(authz)
+                    origin_authz_set.add(authz)
                     allowed_vos.add(vo_name)
 
     # Older plugin versions require at least one issuer block (SOFTWARE-4389)
-    if not origin_authz_list:
+    if not origin_authz_set:
         dummy_auth = SciTokenAuth(issuer="https://scitokens.org/nonexistent", base_path="/no-issuers-found",
                                   restricted_path=None, map_subject=False)
-        origin_authz_list.append(dummy_auth)
+        origin_authz_set.add(dummy_auth)
 
-    issuer_blocks = [a.get_scitokens_conf_block(XROOTD_ORIGIN_SERVER) for a in origin_authz_list]
-    issuer_blocks_str = "\n".join(issuer_blocks)
+    issuer_blocks = [a.get_scitokens_conf_block(XROOTD_ORIGIN_SERVER) for a in origin_authz_set]
+    issuer_blocks_str = "\n".join(sorted(issuer_blocks))
     allowed_vos_str = ", ".join(sorted(allowed_vos))
 
     return template.format(**locals()).rstrip() + "\n"
