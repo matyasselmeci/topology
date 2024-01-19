@@ -21,7 +21,9 @@ CONTACT_TYPES = ["administrative",
                  "submitter",
                  "site",
                  "local operational",
-                 "local security"]
+                 "local security",
+                 "local-operational",
+                 "local-security"]
 
 class Error(Exception):
     pass
