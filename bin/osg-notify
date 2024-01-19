@@ -132,6 +132,7 @@ def parseargs():
     if args.name_filter and args.fqdn_filter:
         oparser.error("Can't specify both --oim-name-filter and --oim-fqdn-filter")
 
+    args.contact_type = [x.replace("-", " ") for x in args.contact_type]
     if not args.contact_type or ("all" in args.contact_type):
         args.contact_type = ["all"]
     args.contact_type = set(args.contact_type)  # remove dupes

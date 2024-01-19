@@ -23,7 +23,9 @@ CONTACT_TYPES = ["administrative",
                  "site",
                  "local executive",
                  "local operational",
-                 "local security"]
+                 "local security",
+                 "local-operational",
+                 "local-security"]
 
 class Error(Exception):
     pass
