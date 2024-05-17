@@ -65,13 +65,13 @@ class VOsData(object):
 
         return expanded_vo_list
 
-    def get_tree(self, contacts: Optional[ContactsData], authorized=False, filters: Filters = None) -> Dict:
+    def get_tree(self, contacts_data: Optional[ContactsData], authorized=False, filters: Filters = None) -> Dict:
         if not filters:
             filters = Filters()
         expanded_vo_list = []
         for vo_name in sorted(self.vos.keys(), key=lambda x: x.lower()):
             try:
-                expanded_vo_data = self._expand_vo(vo_name, contacts_data=contacts, authorized=authorized,
+                expanded_vo_data = self._expand_vo(vo_name, contacts_data=contacts_data, authorized=authorized,
                                                    filters=filters)
                 if expanded_vo_data:
                     if 'DataFederations' in expanded_vo_data:

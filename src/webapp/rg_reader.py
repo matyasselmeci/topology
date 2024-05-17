@@ -56,8 +56,8 @@ def get_rgsummary_rgdowntime(indir, contacts_file=None, authorized=False, strict
     topology = get_topology(indir, strict=strict)
     filters = Filters()
     filters.past_days = -1
-    return topology.get_resource_summary(contacts=contacts_data, authorized=authorized, filters=filters), \
-           topology.get_downtimes(contacts=contacts_data, authorized=authorized, filters=filters)
+    return topology.get_resource_summary(contacts_data=contacts_data, authorized=authorized, filters=filters), \
+           topology.get_downtimes(contacts_data=contacts_data, authorized=authorized, filters=filters)
 
 
 def get_topology(indir="../topology", strict=False):

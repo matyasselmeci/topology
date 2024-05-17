@@ -203,7 +203,7 @@ class Resource(object):
 
         return stashcache_files
 
-    def get_tree(self, contacts: Optional[ContactsData], authorized=False, filters: Filters = None) -> Optional[OrderedDict]:
+    def get_tree(self, contacts_data: Optional[ContactsData], authorized=False, filters: Filters = None) -> Optional[OrderedDict]:
         if filters is None:
             filters = Filters()
 
@@ -248,7 +248,7 @@ class Resource(object):
         if "FQDNAliases" in self.data:
             new_res["FQDNAliases"] = {"FQDNAlias": self.data["FQDNAliases"]}
         if not is_null(self.data, "ContactLists"):
-            new_res["ContactLists"] = self._expand_contactlists(self.data["ContactLists"], authorized, contacts=contacts)
+            new_res["ContactLists"] = self._expand_contactlists(self.data["ContactLists"], authorized, contacts_data=contacts_data)
         new_res["Name"] = self.name
         if "WLCGInformation" in self.data and isinstance(self.data["WLCGInformation"], dict):
             new_res["WLCGInformation"] = self._expand_wlcginformation(self.data["WLCGInformation"])
@@ -326,15 +326,15 @@ class Resource(object):
             ("ChartURL", _get_charturl(voownership.items()))
         ])
 
-    def _expand_contactlists(self, contactlists: Dict, authorized: bool, contacts: Optional[ContactsData]) -> Dict:
+    def _expand_contactlists(self, contactlists: Dict, authorized: bool, contacts_data: Optional[ContactsData]) -> Dict:
         """Return the data structure for an expanded ContactLists for a single Resource."""
         new_contactlists = []
-        for contact_type, contact_data in contactlists.items():
-            contact_data = expand_attr_list(contact_data, "ContactRank", ["Name", "ID", "ContactRank"], ignore_missing=True)
-            for contact in contact_data:
+        for contact_type, contact_info in contactlists.items():
+            contact_info = expand_attr_list(contact_info, "ContactRank", ["Name", "ID", "ContactRank"], ignore_missing=True)
+            for contact in contact_info:
                 contact_id = contact.pop("ID", None)  # ID is for internal use - don't put it in the results
-                if contacts and contact_id in contacts.users_by_id:
-                    user = contacts.users_by_id[contact_id]  # type: User
+                if contacts_data and contact_id in contacts_data.users_by_id:
+                    user = contacts_data.users_by_id[contact_id]  # type: User
                     contact["CILogonID"] = user.cilogon_id
                     if authorized:
                         contact["Email"] = user.email
@@ -345,7 +345,7 @@ class Resource(object):
                             contact["DN"] = dns[0]
                         contact.move_to_end("ContactRank", last=True)
             new_contactlists.append(
-                OrderedDict([("ContactType", contact_type), ("Contacts", {"Contact": contact_data})]))
+                OrderedDict([("ContactType", contact_type), ("Contacts", {"Contact": contact_info})]))
         return {"ContactList": new_contactlists}
 
     @staticmethod
@@ -394,7 +394,7 @@ class ResourceGroup(object):
     def resources(self):
         return [self.resources_by_name[k] for k in sorted(self.resources_by_name)]
 
-    def get_tree(self, contacts: Optional[ContactsData], authorized=False, filters: Filters = None) -> Optional[OrderedDict]:
+    def get_tree(self, contacts_data: Optional[ContactsData], authorized=False, filters: Filters = None) -> Optional[OrderedDict]:
         if filters is None:
             filters = Filters()
         for filter_list, attribute in [(filters.facility_id, self.site.facility.id),
@@ -410,7 +410,7 @@ class ResourceGroup(object):
         filtered_resources = []
         for res in self.resources:
             try:
-                tree = res.get_tree(contacts, authorized, filters)
+                tree = res.get_tree(contacts_data, authorized, filters)
                 if tree:
                     filtered_resources.append(tree)
             except (AttributeError, KeyError, ValueError) as err:
@@ -689,14 +689,14 @@ class Topology(object):
         """
         return self.rgs.values()
 
-    def get_resource_summary(self, contacts: Optional[ContactsData], authorized=False, filters: Filters = None) -> Dict:
+    def get_resource_summary(self, contacts_data: Optional[ContactsData], authorized=False, filters: Filters = None) -> Dict:
         if filters is None:
             filters = Filters()
         rglist = []
         for rgkey in sorted(self.rgs.keys(), key=lambda x: x[1].lower()):
             rgval = self.rgs[rgkey]
             assert isinstance(rgval, ResourceGroup)
-            rgtree = rgval.get_tree(contacts, authorized, filters)
+            rgtree = rgval.get_tree(contacts_data, authorized, filters)
             if rgtree:
                 rglist.append(rgtree)
         return {"ResourceSummary":
@@ -704,9 +704,9 @@ class Topology(object):
                  "@xsi:schemaLocation": RGSUMMARY_SCHEMA_URL,
                  "ResourceGroup": rglist}}
 
-    def get_downtimes(self, contacts: Optional[ContactsData], authorized=False, filters: Filters = None) -> Dict:
+    def get_downtimes(self, contacts_data: Optional[ContactsData], authorized=False, filters: Filters = None) -> Dict:
         _ = authorized
-        _ = contacts
+        _ = contacts_data
         if filters is None:
             filters = Filters()
 
