@@ -322,7 +322,7 @@ class GlobalData:
         if ok:
             try:
                 log.debug("Updating topology RG data")
-                self.topology.update(rg_reader.get_topology(self.topology_dir, self.get_contacts_data(), strict=self.strict))
+                self.topology.update(rg_reader.get_topology(self.topology_dir, strict=self.strict))
                 log.debug("Updated topology RG data successfully")
             except Exception:
                 if self.strict:
@@ -343,7 +343,7 @@ class GlobalData:
                 if ok:
                     try:
                         log.debug("Updating VOs")
-                        self.vos_data.update(vo_reader.get_vos_data(self.vos_dir, self.get_contacts_data(), strict=self.strict))
+                        self.vos_data.update(vo_reader.get_vos_data(self.vos_dir, strict=self.strict))
                         log.debug("Updated VOs successfully")
                     except Exception:
                         if self.strict:

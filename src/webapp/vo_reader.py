@@ -19,9 +19,9 @@ from webapp.vos_data import VOsData
 log = logging.getLogger(__name__)
 
 
-def get_vos_data(indir, contacts_data, strict=False) -> VOsData:
+def get_vos_data(indir, strict=False) -> VOsData:
     reporting_groups_data = load_yaml_file(os.path.join(indir, "REPORTING_GROUPS.yaml"))
-    vos_data = VOsData(contacts_data=contacts_data, reporting_groups_data=reporting_groups_data)
+    vos_data = VOsData(reporting_groups_data=reporting_groups_data)
     for file in os.listdir(indir):
         if file == "REPORTING_GROUPS.yaml": continue
         if not file.endswith(".yaml"): continue
@@ -59,7 +59,7 @@ def main(argv):
     if args.contacts:
         contacts_data = get_contacts_data(args.contacts)
     xml = to_xml(
-        get_vos_data(args.indir, contacts_data=contacts_data, strict=args.strict).get_tree(authorized=True))
+        get_vos_data(args.indir, strict=args.strict).get_tree(contacts=contacts_data, authorized=True))
     if args.outfile:
         with open(args.outfile, "w") as fh:
             fh.write(xml)

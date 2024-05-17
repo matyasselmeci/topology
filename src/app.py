@@ -167,13 +167,13 @@ def homepage():
 
 @app.route('/map/iframe')
 def map():
-    rgsummary = global_data.get_topology().get_resource_summary()
+    rgsummary = global_data.get_topology().get_resource_summary(contacts=None)
 
     return _fix_unicode(render_template('iframe.html.j2', resourcegroups=rgsummary["ResourceSummary"]["ResourceGroup"]))
 
 @app.route('/api/resource_group_summary')
 def resource_summary():
-    data = global_data.get_topology().get_resource_summary()["ResourceSummary"]["ResourceGroup"]
+    data = global_data.get_topology().get_resource_summary(contacts=None)["ResourceSummary"]["ResourceGroup"]
 
     return Response(
         to_json_bytes(simplify_attr_list(data, namekey='GroupName', del_name=False)),
@@ -350,6 +350,7 @@ def miscfacility_json():
 def miscresource_json():
     resources = {}
     topology = global_data.get_topology()
+    contacts_ = global_data.get_contacts_data()
     for rg in topology.rgs.values():
         for resource in rg.resources_by_name.values():
             resources[resource.name] = {
@@ -357,30 +358,36 @@ def miscresource_json():
                 "Site": rg.site.name,
                 "Facility": rg.site.facility.name,
                 "ResourceGroup": rg.name,
-                **resource.get_tree()
+                **resource.get_tree(contacts=contacts_)
             }
 
     return Response(to_json_bytes(resources), mimetype='application/json')
 
 @app.route('/vosummary/xml')
 def vosummary_xml():
-    return _get_xml_or_fail(global_data.get_vos_data().get_tree, request.args)
+    return _get_xml_or_fail(global_data.get_vos_data().get_tree,
+                            global_data.get_contacts_data(),
+                            request.args)
 
 @app.route('/vosummary/json')
 def vosummary_json():
     return Response(to_json_bytes(
-        simplify_attr_list(global_data.get_vos_data().get_expansion(), namekey='Name')
+        simplify_attr_list(global_data.get_vos_data().get_expansion(contacts_data=None), namekey='Name')
     ), mimetype="application/json")
 
 
 @app.route('/rgsummary/xml')
 def rgsummary_xml():
-    return _get_xml_or_fail(global_data.get_topology().get_resource_summary, request.args)
+    return _get_xml_or_fail(global_data.get_topology().get_resource_summary,
+                            global_data.get_contacts_data(),
+                            request.args)
 
 
 @app.route('/rgdowntime/xml')
 def rgdowntime_xml():
-    return _get_xml_or_fail(global_data.get_topology().get_downtimes, request.args)
+    return _get_xml_or_fail(global_data.get_topology().get_downtimes,
+                            global_data.get_contacts_data(),
+                            request.args)
 
 
 @app.route('/rgdowntime/ical')
@@ -1091,13 +1098,13 @@ def get_filters_from_args(args) -> Filters:
     return filters
 
 
-def _get_xml_or_fail(getter_function, args):
+def _get_xml_or_fail(getter_function, contacts_, args):
     try:
         filters = get_filters_from_args(args)
     except InvalidArgumentsError as e:
         return Response("Invalid arguments: " + str(e), status=400)
     return Response(
-        to_xml_bytes(getter_function(_get_authorized(), filters)),
+        to_xml_bytes(getter_function(contacts_, _get_authorized(), filters)),
         mimetype="text/xml"
     )
 
