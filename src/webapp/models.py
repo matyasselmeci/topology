@@ -299,7 +299,7 @@ class GlobalData:
         ok = self._update_topology_repo()
         if ok:
             try:
-                self.topology.update(rg_reader.get_topology(self.topology_dir, self.get_contacts_data(), strict=self.strict))
+                self.topology.update(rg_reader.get_topology(self.topology_dir, strict=self.strict))
             except Exception:
                 if self.strict:
                     raise
@@ -318,7 +318,7 @@ class GlobalData:
                 ok = self._update_topology_repo()
                 if ok:
                     try:
-                        self.vos_data.update(vo_reader.get_vos_data(self.vos_dir, self.get_contacts_data(), strict=self.strict))
+                        self.vos_data.update(vo_reader.get_vos_data(self.vos_dir, strict=self.strict))
                     except Exception:
                         if self.strict:
                             raise

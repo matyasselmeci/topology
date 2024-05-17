@@ -13,8 +13,7 @@ log = getLogger(__name__)
 
 
 class VOsData(object):
-    def __init__(self, contacts_data: ContactsData, reporting_groups_data: ParsedYaml):
-        self.contacts_data = contacts_data
+    def __init__(self, reporting_groups_data: ParsedYaml):
         self.vos = {}  # type: Dict[str, ParsedYaml]
         self.reporting_groups_data = reporting_groups_data
         self.stashcache_by_vo_name = {}  # type: Dict[str, StashCache]
@@ -34,13 +33,14 @@ class VOsData(object):
             else:
                 self.stashcache_by_vo_name[vo_name] = stashcache_obj
 
-    def get_expansion(self, authorized=False, filters: Filters = None):
+    def get_expansion(self, contacts_data: Optional[ContactsData], authorized=False, filters: Filters = None):
         if not filters:
             filters = Filters()
         expanded_vo_list = []
         for vo_name, vo_data in sorted(self.vos.items(), key=lambda x: x[0].lower()):
             try:
-                expanded_vo_data = self._expand_vo(vo_name, authorized=authorized, filters=filters)
+                expanded_vo_data = self._expand_vo(vo_name, contacts_data=contacts_data, authorized=authorized,
+                                                   filters=filters)
 
                 # Add the regex pattern from the scitokens mapfile
                 if not is_null(vo_data, "Credentials", "TokenIssuers"):
@@ -65,13 +65,14 @@ class VOsData(object):
 
         return expanded_vo_list
 
-    def get_tree(self, authorized=False, filters: Filters = None) -> Dict:
+    def get_tree(self, contacts: Optional[ContactsData], authorized=False, filters: Filters = None) -> Dict:
         if not filters:
             filters = Filters()
         expanded_vo_list = []
         for vo_name in sorted(self.vos.keys(), key=lambda x: x.lower()):
             try:
-                expanded_vo_data = self._expand_vo(vo_name, authorized=authorized, filters=filters)
+                expanded_vo_data = self._expand_vo(vo_name, contacts_data=contacts, authorized=authorized,
+                                                   filters=filters)
                 if expanded_vo_data:
                     if 'DataFederations' in expanded_vo_data:
                         del expanded_vo_data['DataFederations']
@@ -84,7 +85,7 @@ class VOsData(object):
             "@xsi:schemaLocation": VOSUMMARY_SCHEMA_URL,
             "VO": expanded_vo_list}}
 
-    def _expand_vo(self, name: str, authorized: bool, filters: Filters) -> Optional[OrderedDict]:
+    def _expand_vo(self, name: str, contacts_data: Optional[ContactsData], authorized: bool, filters: Filters) -> Optional[OrderedDict]:
         # Restore ordering
         new_vo = OrderedDict.fromkeys(["ID", "Name", "LongName", "CertificateOnly", "PrimaryURL",
                                        "MembershipServicesURL", "PurposeURL", "SupportURL", "AppDescription",
@@ -110,20 +111,20 @@ class VOsData(object):
         new_vo["Name"] = name
 
         if not is_null(vo, "Contacts"):
-            new_vo["ContactTypes"] = self._expand_contacttypes(vo["Contacts"], authorized)
+            new_vo["ContactTypes"] = self._expand_contacttypes(contacts_data, vo["Contacts"], authorized)
         new_vo.pop("Contacts", None)
 
         if not is_null(vo, "ReportingGroups"):
-            new_vo["ReportingGroups"] = self._expand_reporting_groups(vo["ReportingGroups"], authorized)
+            new_vo["ReportingGroups"] = self._expand_reporting_groups(contacts_data, vo["ReportingGroups"], authorized)
 
         oasis = OrderedDict.fromkeys(["UseOASIS", "Managers", "OASISRepoURLs"])
         oasis["UseOASIS"] = vo.get("OASIS", {}).get("UseOASIS", False)
         if not is_null(vo, "OASIS", "Managers"):
             managers = vo["OASIS"]["Managers"]
             if isinstance(managers, dict):
-                oasis["Managers"] = self._expand_oasis_legacy_managers(managers)
+                oasis["Managers"] = self._expand_oasis_legacy_managers(managers, contacts_data=contacts_data)
             else:
-                oasis["Managers"] = self._expand_oasis_managers(managers)
+                oasis["Managers"] = self._expand_oasis_managers(managers, contacts_data=contacts_data)
         if not is_null(vo, "OASIS", "OASISRepoURLs"):
             oasis["OASISRepoURLs"] = {"URL": vo["OASIS"]["OASISRepoURLs"]}
         new_vo["OASIS"] = oasis
@@ -155,15 +156,15 @@ class VOsData(object):
 
         return new_vo
 
-    def _expand_contacttypes(self, vo_contacts: Dict, authorized: bool) -> Dict:
+    def _expand_contacttypes(self, contacts_data: Optional[ContactsData], vo_contacts: Dict, authorized: bool) -> Dict:
         new_contacttypes = []
         for type_, list_ in vo_contacts.items():
             contact_items = []
             for contact in list_:
                 contact_id = contact["ID"]
                 new_contact = OrderedDict([("Name", contact["Name"])])
-                if self.contacts_data:
-                    user = self.contacts_data.users_by_id.get(contact_id)
+                if contacts_data:
+                    user = contacts_data.users_by_id.get(contact_id)
                     if user:
                         new_contact["CILogonID"] = user.cilogon_id
                         if authorized:
@@ -196,7 +197,7 @@ class VOsData(object):
             new_fields["SecondaryFields"] = {"Field": fields_of_science["SecondaryFields"]}
         return new_fields
 
-    def _expand_oasis_legacy_managers(self, managers):
+    def _expand_oasis_legacy_managers(self, managers, contacts_data: Optional[ContactsData]):
         """Expand
         {"a": {"DNs": [...]}}
         into
@@ -210,14 +211,14 @@ class VOsData(object):
                 new_managers[name]["DNs"] = None
 
             new_managers[name]["CILogonID"] = None
-            if self.contacts_data:
-                user = self.contacts_data.users_by_id.get(data["ID"])
+            if contacts_data:
+                user = contacts_data.users_by_id.get(data["ID"])
                 if user:
                     new_managers[name]["CILogonID"] = user.cilogon_id
         return {"Manager": expand_attr_list(new_managers, "Name", ordering=["Name", "CILogonID", "DNs"],
                                             ignore_missing=True)}
 
-    def _expand_oasis_managers(self, managers):
+    def _expand_oasis_managers(self, managers, contacts_data: Optional[ContactsData]):
         """Expand
         [{"Name", "a", "DNs": [...]}, ...]
         into
@@ -230,8 +231,8 @@ class VOsData(object):
             else:
                 new_managers[i]["DNs"] = None
             new_managers[i]["CILogonID"] = None
-            if self.contacts_data:
-                user = self.contacts_data.users_by_id.get(data["ID"])
+            if contacts_data:
+                user = contacts_data.users_by_id.get(data["ID"])
                 if user:
                     new_managers[i]["CILogonID"] = user.cilogon_id
 
@@ -240,7 +241,7 @@ class VOsData(object):
 
         return {"Manager": list(map(order_manager_dict, new_managers))}
 
-    def _expand_reporting_groups(self, reporting_groups_list: List, authorized: bool) -> Dict:
+    def _expand_reporting_groups(self, contacts_data: Optional[ContactsData], reporting_groups_list: List, authorized: bool) -> Dict:
         new_reporting_groups = {}
         for name, data in self.reporting_groups_data.items():
             if name not in reporting_groups_list: continue
@@ -250,9 +251,9 @@ class VOsData(object):
                 new_contacts = []
                 for contact in data["Contacts"]:
                     new_contact = OrderedDict([("Name", contact["Name"])])
-                    if authorized and self.contacts_data:
-                        if contact["ID"] in self.contacts_data.users_by_id:
-                            extra_data = self.contacts_data.users_by_id[contact["ID"]]
+                    if authorized and contacts_data:
+                        if contact["ID"] in contacts_data.users_by_id:
+                            extra_data = contacts_data.users_by_id[contact["ID"]]
                             new_contact["Email"] = extra_data.email
                             new_contact["Phone"] = extra_data.phone
                             new_contact["SMSAddress"] = extra_data.sms_address

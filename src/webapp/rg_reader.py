@@ -53,18 +53,18 @@ def get_rgsummary_rgdowntime(indir, contacts_file=None, authorized=False, strict
     contacts_data = None
     if contacts_file:
         contacts_data = get_contacts_data(contacts_file)
-    topology = get_topology(indir, contacts_data, strict=strict)
+    topology = get_topology(indir, strict=strict)
     filters = Filters()
     filters.past_days = -1
-    return topology.get_resource_summary(authorized=authorized, filters=filters), \
-           topology.get_downtimes(authorized=authorized, filters=filters)
+    return topology.get_resource_summary(contacts=contacts_data, authorized=authorized, filters=filters), \
+           topology.get_downtimes(contacts=contacts_data, authorized=authorized, filters=filters)
 
 
-def get_topology(indir="../topology", contacts_data=None, strict=False):
+def get_topology(indir="../topology", strict=False):
     root = Path(indir)
     support_centers = load_yaml_file(root / "support-centers.yaml")
     service_types = load_yaml_file(root / "services.yaml")
-    tables = CommonData(contacts=contacts_data, service_types=service_types, support_centers=support_centers)
+    tables = CommonData(service_types=service_types, support_centers=support_centers)
     topology = Topology(tables)
 
     skip_msg = "skipping (non-strict mode)"
