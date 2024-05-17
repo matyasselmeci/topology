@@ -59,7 +59,7 @@ def main(argv):
     if args.contacts:
         contacts_data = get_contacts_data(args.contacts)
     xml = to_xml(
-        get_vos_data(args.indir, strict=args.strict).get_tree(contacts=contacts_data, authorized=True))
+        get_vos_data(args.indir, strict=args.strict).get_tree(contacts_data=contacts_data, authorized=True))
     if args.outfile:
         with open(args.outfile, "w") as fh:
             fh.write(xml)

@@ -167,13 +167,13 @@ def homepage():
 
 @app.route('/map/iframe')
 def map():
-    rgsummary = global_data.get_topology().get_resource_summary(contacts=None)
+    rgsummary = global_data.get_topology().get_resource_summary(contacts_data=None)
 
     return _fix_unicode(render_template('iframe.html.j2', resourcegroups=rgsummary["ResourceSummary"]["ResourceGroup"]))
 
 @app.route('/api/resource_group_summary')
 def resource_summary():
-    data = global_data.get_topology().get_resource_summary(contacts=None)["ResourceSummary"]["ResourceGroup"]
+    data = global_data.get_topology().get_resource_summary(contacts_data=None)["ResourceSummary"]["ResourceGroup"]
 
     return Response(
         to_json_bytes(simplify_attr_list(data, namekey='GroupName', del_name=False)),
@@ -358,7 +358,7 @@ def miscresource_json():
                 "Site": rg.site.name,
                 "Facility": rg.site.facility.name,
                 "ResourceGroup": rg.name,
-                **resource.get_tree(contacts=contacts_)
+                **resource.get_tree(contacts_data=contacts_)
             }
 
     return Response(to_json_bytes(resources), mimetype='application/json')
@@ -1098,13 +1098,13 @@ def get_filters_from_args(args) -> Filters:
     return filters
 
 
-def _get_xml_or_fail(getter_function, contacts_, args):
+def _get_xml_or_fail(getter_function, contacts_data, args):
     try:
         filters = get_filters_from_args(args)
     except InvalidArgumentsError as e:
         return Response("Invalid arguments: " + str(e), status=400)
     return Response(
-        to_xml_bytes(getter_function(contacts_, _get_authorized(), filters)),
+        to_xml_bytes(getter_function(contacts_data, _get_authorized(), filters)),
         mimetype="text/xml"
     )
 
