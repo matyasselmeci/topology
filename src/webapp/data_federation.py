@@ -1,3 +1,4 @@
+import functools
 import re
 import urllib
 import urllib.parse
@@ -237,41 +238,29 @@ def _parse_authz_scitokens(attributes: Dict, authz: Dict) -> Tuple[AuthMethod, O
     ), None
 
 
-def _parse_authz_dict(authz: Dict) -> Tuple[AuthMethod, Optional[str]]:
-    """Return the instance of the appropriate AuthMethod from a single item of dict type in an authz list.
-    An authz list item can be a dict for FQAN, DN, or SciTokens.
+# parse_authz() is a single-dispatch generic function to handle the following confusing bit of YAML:
+# This is a string:
+# - FQAN:/foobar
+# This is a dict:
+# - FQAN: /foobar
+@functools.singledispatch
+def parse_authz(authz) -> Tuple[AuthMethod, Optional[str]]:
+    """Return the instance of the appropriate AuthMethod from a single item in an authz list for a namespace.
 
-    We are expecting only one element in this dict: the key indicates the authorization type,
-    and the value is the contents.
+    An authz list item can be a string (for FQAN or DN auth) or dict (FQAN, DN, or SciTokens auth).
+    Return a tuple with the AuthMethod and an optional error string; if there is an error, the auth method is a NullAuth
+    and the error string contains a description of the error.  If there is no error, the error string is None.
 
-    On success, return the appropriate AuthMethod and None; on failure, return a NullAuth and a string describing the error.
+    A string looks like "FQAN:/foobar" or "DN:/foobar" or "PUBLIC". Note the lack of space after :.
+    A dict will have only one key, which is the auth type, and the value is the contents.
     """
 
-    for auth_type, attributes in authz.items():
-        if auth_type == "SciTokens":
-            if not isinstance(attributes, dict) or not attributes:
-                return NullAuth(), f"Invalid SciTokens auth {authz}: no attributes"
-            return _parse_authz_scitokens(attributes=attributes, authz=authz)
-        elif auth_type == "FQAN":
-            if not attributes:
-                return NullAuth(), f"Invalid FQAN auth {authz}: FQAN missing or empty"
-            return FQANAuth(fqan=attributes), None
-        elif auth_type == "DN":
-            if generate_dn_hash is None:
-                return NullAuth(), f"'asn1' library unavailable; cannot handle DN auth {authz}"
-            if not attributes:
-                return NullAuth(), f"Invalid DN auth {authz}: DN missing or empty"
-            return DNAuth(dn=attributes), None
-        else:
-            return NullAuth(), f"Unknown auth type {auth_type} in {authz}"
+    # This is the handler for the default case, where authz is neither a str nor a dict.
+    return NullAuth(), f"Unknown authz list entry {authz}"
 
 
+@parse_authz.register(str)
 def _parse_authz_str(authz: str) -> Tuple[AuthMethod, Optional[str]]:
-    """Return the instance of the appropriate AuthMethod from a single item of string type in an authz list.
-    An authz list item can be a string for FQAN and DN auth only, or PUBLIC.
-
-    On success, return the appropriate AuthMethod and None; on failure, return a NullAuth and a string describing the error.
-    """
     if authz.startswith("FQAN:"):
         fqan = authz[5:].strip()
         if not fqan:
@@ -290,25 +279,26 @@ def _parse_authz_str(authz: str) -> Tuple[AuthMethod, Optional[str]]:
         return NullAuth(), f"Unknown authz list entry {authz}"
 
 
-def parse_authz(authz: Union[str, Dict]) -> Tuple[AuthMethod, Optional[str]]:
-    """Return the instance of the appropriate AuthMethod from a single item in an authz list for a namespace.
-
-    An authz list item can be a string (for FQAN or DN auth) or dict (FQAN, DN, or SciTokens auth).
-    Return a tuple with the AuthMethod and an optional error string; if there is an error, the auth method is a NullAuth
-    and the error string contains a description of the error.  If there is no error, the error string is None.
-    """
-    # YAML note:
-    # This is a string:
-    # - FQAN:/foobar
-    # This is a dict:
-    # - FQAN: /foobar
-    # Accept both.
-    if isinstance(authz, dict):
-        return _parse_authz_dict(authz)
-    elif isinstance(authz, str):
-        return _parse_authz_str(authz)
-    else:
-        return NullAuth(), f"Unknown authz list entry {authz}"
+@parse_authz.register(dict)
+def _parse_authz_dict(authz: Dict) -> Tuple[AuthMethod, Optional[str]]:
+    for auth_type, attributes in authz.items():
+        if auth_type == "SciTokens":
+            if not isinstance(attributes, dict) or not attributes:
+                return NullAuth(), f"Invalid SciTokens auth {authz}: no attributes"
+            return _parse_authz_scitokens(attributes=attributes, authz=authz)
+        elif auth_type == "FQAN":
+            if not attributes:
+                return NullAuth(), f"Invalid FQAN auth {authz}: FQAN missing or empty"
+            return FQANAuth(fqan=attributes), None
+        elif auth_type == "DN":
+            if generate_dn_hash is None:
+                return NullAuth(), f"'asn1' library unavailable; cannot handle DN auth {authz}"
+            if not attributes:
+                return NullAuth(), f"Invalid DN auth {authz}: DN missing or empty"
+            return DNAuth(dn=attributes), None
+        else:
+            return NullAuth(), f"Unknown auth type {auth_type} in {authz}"
+    return NullAuth(), f"Empty authz dict {authz}"
 
 
 class StashCache:
