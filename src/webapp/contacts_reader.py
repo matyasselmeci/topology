@@ -11,11 +11,10 @@ from typing import Dict, Optional
 if __name__ == "__main__" and __package__ is None:
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from webapp.common import to_xml, MISCUSER_SCHEMA_URL, load_yaml_file
+from webapp.common import API_KEY_HASH_RE, to_xml, MISCUSER_SCHEMA_URL, load_yaml_file
 
 
 log = getLogger(__name__)
-
 
 class User(object):
     def __init__(self, id_, yaml_data):
@@ -63,6 +62,10 @@ class User(object):
     def cilogon_id(self):
         return self.yaml_data.get("CILogonID", None)
 
+    @property
+    def api_key_hash(self):
+        return self.yaml_data["ContactInformation"].get("APIKeyHash", None)
+
     @staticmethod
     def _get_gravatar_url(email):
         return "http://www.gravatar.com/avatar/{0}".format(
@@ -100,6 +103,21 @@ class ContactsData(object):
             for dn in user.dns:
                 dns.append(dn)
         return dns
+
+    def get_api_keys(self):
+        api_keys = {}
+        for id_, user in self.users_by_id.items():
+            api_key_hash = user.api_key_hash
+            if api_key_hash is None:
+                continue
+            if not isinstance(api_key_hash, str) or not API_KEY_HASH_RE.match(api_key_hash):
+                log.warning(
+                    "User %s has invalid ContactInformation.APIKeyHash; expected sha256:<64 lowercase hex chars>; skipping",
+                    id_,
+                )
+                continue
+            api_keys[api_key_hash] = user.name
+        return api_keys
 
     def get_tree(self, authorized=False, filters=None) -> Dict:
         user_list = []

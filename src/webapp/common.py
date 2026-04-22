@@ -400,3 +400,10 @@ PELICAN_CACHE = "Pelican cache"
 PELICAN_ORIGIN = "Pelican origin"
 GRIDTYPE_1 = "OSG Production Resource"
 GRIDTYPE_2 = "OSG Integration Test Bed Resource"
+API_KEY_HASH_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
+
+
+def token_to_apikeyhash(token: Union[str, bytes]) -> str:
+    if isinstance(token, str):
+        token = token.encode("utf-8")
+    return "sha256:" + hashlib.sha256(token).hexdigest()

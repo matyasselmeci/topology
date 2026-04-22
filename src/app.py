@@ -5,6 +5,7 @@ import csv
 import flask
 import flask.logging
 from flask import Flask, Response, make_response, request, render_template, redirect, url_for, session
+import hashlib
 from io import StringIO
 import logging
 import os
@@ -20,7 +21,7 @@ from flask_wtf.csrf import CSRFProtect
 
 from webapp import default_config
 from webapp.common import readfile, to_xml_bytes, to_json_bytes, Filters, support_cors, simplify_attr_list, is_null, \
-    escape, cache_control_private, PreJSON, is_true, GRIDTYPE_1, GRIDTYPE_2, NamespacesFilters
+    escape, cache_control_private, PreJSON, is_true, GRIDTYPE_1, GRIDTYPE_2, NamespacesFilters, token_to_apikeyhash
 from webapp.flask_common import create_accepted_response
 from webapp.exceptions import DataError, ResourceNotRegistered, ResourceMissingServices
 from webapp.forms import GenerateDowntimeForm, GenerateResourceGroupDowntimeForm, GenerateProjectForm
@@ -1107,6 +1108,9 @@ def _get_authorized():
     """
     global app
 
+    def _hash_suffix(token_hash: str) -> str:
+        return token_hash[-8:]
+
     # Loop through looking for all of the creds
     for key, value in request.environ.items():
         if key.startswith('GRST_CRED_AURI_') and value.startswith("dn:"):
@@ -1125,6 +1129,23 @@ def _get_authorized():
             else:
                 if app and app.logger:
                     app.logger.debug("Rejected %s", client_dn)
+
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        bearer_token = auth_header[7:]
+        if bearer_token:
+            token_hash = token_to_apikeyhash(bearer_token)
+            authorized_api_keys = global_data.get_api_keys()
+            if authorized_api_keys and token_hash in authorized_api_keys:
+                if app and app.logger:
+                    app.logger.info(
+                        "Authorized bearer hash_suffix=%s owner=%s",
+                        _hash_suffix(token_hash),
+                        authorized_api_keys[token_hash],
+                    )
+                return True
+            if app and app.logger:
+                app.logger.debug("Rejected bearer hash_suffix=%s", _hash_suffix(token_hash))
 
     # If it gets here, then it is not authorized
     return default_authorized
