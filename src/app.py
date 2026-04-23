@@ -39,6 +39,7 @@ except ImportError as e:
 
 
 class InvalidArgumentsError(Exception): pass
+class AuthenticationFailedError(Exception): pass
 
 def _verify_config(cfg):
     if not cfg["NO_GIT"]:
@@ -74,6 +75,11 @@ if "AUTH" in app.config:
 
 if "LOGLEVEL" in app.config:
     app.logger.setLevel(app.config["LOGLEVEL"])
+
+
+@app.errorhandler(AuthenticationFailedError)
+def _handle_authentication_failed(err):
+    return Response(str(err), status=401)
 
 global_data = GlobalData(app.config, strict=app.config.get("STRICT", app.debug))
 
@@ -1106,11 +1112,56 @@ def _get_authorized():
 
     returns: True if authorized, False otherwise
     """
-    global app
+    if _authorize_bearer_header():
+        return True
 
-    def _hash_suffix(token_hash: str) -> str:
-        return token_hash[-8:]
+    if _authorize_dn_credentials():
+        return True
 
+    # If it gets here, then it is not authorized
+    return default_authorized
+
+
+def _hash_suffix(token_hash: str) -> str:
+    return token_hash[-8:]
+
+
+def _authorize_bearer_header() -> bool:
+    """
+    Determine if the client is authorized based on an API Key passed
+    in the Authorization header as a Bearer token.
+
+    returns: True if authorized, False otherwise;
+    if the header is present but invalid, raises AuthenticationFailedError
+    to indicate that the request should be rejected rather than allowed
+    to fallback to other authentication methods.
+    """
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return False
+
+    bearer_token = auth_header[7:]
+    if not bearer_token:
+        # Blank bearer token should be treated like no token and allow fallback.
+        return False
+
+    token_hash = token_to_apikeyhash(bearer_token)
+    authorized_api_keys = global_data.get_api_keys()
+    if authorized_api_keys and token_hash in authorized_api_keys:
+        if app and app.logger:
+            app.logger.info(
+                "Authorized bearer hash_suffix=%s owner=%s",
+                _hash_suffix(token_hash),
+                authorized_api_keys[token_hash],
+            )
+        return True
+
+    if app and app.logger:
+        app.logger.debug("Rejected bearer hash_suffix=%s", _hash_suffix(token_hash))
+    raise AuthenticationFailedError("Invalid bearer token")
+
+
+def _authorize_dn_credentials() -> bool:
     # Loop through looking for all of the creds
     for key, value in request.environ.items():
         if key.startswith('GRST_CRED_AURI_') and value.startswith("dn:"):
@@ -1130,25 +1181,7 @@ def _get_authorized():
                 if app and app.logger:
                     app.logger.debug("Rejected %s", client_dn)
 
-    auth_header = request.headers.get("Authorization", "")
-    if auth_header.startswith("Bearer "):
-        bearer_token = auth_header[7:]
-        if bearer_token:
-            token_hash = token_to_apikeyhash(bearer_token)
-            authorized_api_keys = global_data.get_api_keys()
-            if authorized_api_keys and token_hash in authorized_api_keys:
-                if app and app.logger:
-                    app.logger.info(
-                        "Authorized bearer hash_suffix=%s owner=%s",
-                        _hash_suffix(token_hash),
-                        authorized_api_keys[token_hash],
-                    )
-                return True
-            if app and app.logger:
-                app.logger.debug("Rejected bearer hash_suffix=%s", _hash_suffix(token_hash))
-
-    # If it gets here, then it is not authorized
-    return default_authorized
+    return False
 
 
 try:

@@ -82,7 +82,6 @@ class TestApiKeyAuth:
     @pytest.mark.parametrize(
         "auth_header",
         [
-            f"Bearer {UNKNOWN_TOKEN}",
             "Basic abc123",
             "Bearer ",  # empty token after "Bearer "
             "",  # no Authorization header at all
@@ -97,6 +96,15 @@ class TestApiKeyAuth:
         assert response.status_code == 200
         assert b"<ContactInformation>" not in response.data
 
+    def test_invalid_non_empty_bearer_returns_401(
+        self, client: FlaskClient, mocker: MockerFixture, mock_api_keys
+    ):
+        response = client.get(
+            "/miscuser/xml", headers={"Authorization": f"Bearer {UNKNOWN_TOKEN}"}
+        )
+        assert response.status_code == 401
+        assert b"<ContactInformation>" not in response.data
+
     def test_query_param_token_does_not_authorize(
         self, client: FlaskClient, mocker: MockerFixture, mock_api_keys
     ):
@@ -105,29 +113,54 @@ class TestApiKeyAuth:
         assert response.status_code == 200
         assert b"<ContactInformation>" not in response.data
 
-    def test_valid_dn_with_bad_bearer_still_authorized(
+    def test_valid_dn_with_bad_bearer_is_unauthorized(
         self, client: FlaskClient, mocker: MockerFixture, mock_api_keys
     ):
-        """DN auth succeeds even when the Bearer token is invalid (DN wins first)."""
+        """An invalid non-empty Bearer token fails auth and does not fall back to DN."""
         mocker.patch.object(global_data, "get_dns", return_value={_TEST_DN})
         response = client.get(
             "/miscuser/xml",
             headers={"Authorization": f"Bearer {UNKNOWN_TOKEN}"},
             environ_base=self.dn_auth_environ(_TEST_DN),
         )
+        assert response.status_code == 401
+        assert b"<ContactInformation>" not in response.data
+
+    def test_blank_bearer_with_valid_dn_falls_back_to_dn_auth(
+        self, client: FlaskClient, mocker: MockerFixture, mock_api_keys
+    ):
+        """A blank Bearer token should behave like no token and allow DN fallback."""
+        mocker.patch.object(global_data, "get_dns", return_value={_TEST_DN})
+        response = client.get(
+            "/miscuser/xml",
+            headers={"Authorization": "Bearer "},
+            environ_base=self.dn_auth_environ(_TEST_DN),
+        )
         assert response.status_code == 200
         assert b"<ContactInformation>" in response.data
 
-    def test_none_api_keys_with_valid_header_is_unauthorized_no_exception(
+    def test_no_bearer_with_valid_dn_falls_back_to_dn_auth(
+        self, client: FlaskClient, mocker: MockerFixture, mock_api_keys
+    ):
+        """No Bearer token should allow DN fallback to authorize."""
+        mocker.patch.object(global_data, "get_dns", return_value={_TEST_DN})
+        response = client.get(
+            "/miscuser/xml",
+            environ_base=self.dn_auth_environ(_TEST_DN),
+        )
+        assert response.status_code == 200
+        assert b"<ContactInformation>" in response.data
+
+    def test_none_api_keys_with_valid_header_is_401(
         self, client: FlaskClient, mocker: MockerFixture
     ):
-        """When get_api_keys() returns None, a Bearer token is rejected without raising."""
+        """When get_api_keys() returns None, a valid-looking Bearer token is rejected with 401."""
         mocker.patch.object(global_data, "get_api_keys", return_value=None)
         mocker.patch("app.default_authorized", False)
         response = client.get(
             "/miscuser/xml", headers={"Authorization": f"Bearer {TEST_TOKEN}"}
         )
-        assert response.status_code == 200
+        assert response.status_code == 401
         assert b"<ContactInformation>" not in response.data
 
     # ------------------------------------------------------------------
