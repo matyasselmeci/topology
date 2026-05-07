@@ -1,4 +1,3 @@
-import hashlib
 import logging
 import os
 import sys
@@ -53,11 +52,11 @@ class TestApiKeyAuth:
 
         contacts_data = ContactsData(load_yaml_file(_TESTCONTACT_YAML))
         mocker.patch.object(
-            global_data, "get_api_keys", return_value=contacts_data.get_api_keys()
+            global_data,
+            "get_api_keys",
+            return_value={token_to_apikeyhash(TEST_TOKEN): "Alex Jordan Morgan"},
         )
-        mocker.patch.object(
-            global_data, "get_contacts_data", return_value=contacts_data
-        )
+        mocker.patch.object(global_data, "get_contacts_data", return_value=contacts_data)
         mocker.patch("app.default_authorized", False)
 
     @staticmethod

@@ -1,10 +1,10 @@
 """
-Unit tests for the API-key token helpers added to contacts_reader.py and models.py.
-No Flask test client is used here; ContactsData and GlobalData are constructed directly.
+Unit tests for API key loading and GlobalData API key caching behavior.
 """
 import pytest
 import warnings
 from unittest.mock import MagicMock, patch
+import yaml
 
 import os
 import sys
@@ -24,7 +24,7 @@ warnings.filterwarnings(
 )
 
 from webapp.common import token_to_apikeyhash
-from webapp.contacts_reader import ContactsData, User
+from webapp.contacts_reader import ContactsData, get_api_keys_data
 from webapp.models import GlobalData, CachedData
 
 
@@ -33,74 +33,116 @@ from webapp.models import GlobalData, CachedData
 # ---------------------------------------------------------------------------
 
 
-def _make_user_yaml(full_name="Test User", email="test@example.com", api_key_hash=None):
-    """Return a minimal user YAML dict, optionally with an APIKeyHash string."""
+def _make_user_yaml(full_name="Test User", email="test@example.com"):
+    """Return a minimal user YAML dict."""
     data = {
         "FullName": full_name,
         "ContactInformation": {
             "PrimaryEmail": email,
         },
     }
-    if api_key_hash is not None:
-        data["ContactInformation"]["APIKeyHash"] = api_key_hash
     return data
 
 
-def _make_contacts_data(*user_yamls):
-    """Build a ContactsData from an iterable of (id, yaml_data) pairs."""
-    raw = {str(i): yaml for i, yaml in enumerate(user_yamls)}
+def _make_contacts_data_by_id(raw):
+    """Build a ContactsData from a mapping of contact_id -> yaml_data."""
     return ContactsData(raw)
 
 
+def _write_api_key_file(tmp_path, data):
+    path = tmp_path / "api-keys.yaml"
+    path.write_text(yaml.safe_dump(data), encoding="utf-8")
+    return str(path)
+
+
 # ---------------------------------------------------------------------------
-# ContactsData.get_api_keys() tests
+# contacts_reader.get_api_keys_data() tests
 # ---------------------------------------------------------------------------
 
-class TestContactsDataGetApiKeys:
+class TestGetApiKeysData:
 
-    def test_returns_hash_to_name_mapping(self):
-        """get_api_keys() collects each user's APIKeyHash keyed to FullName."""
+    def test_returns_hash_to_name_mapping(self, tmp_path):
         hash_a = token_to_apikeyhash("tok-a")
         hash_b = token_to_apikeyhash("tok-b")
-        cd = _make_contacts_data(
-            _make_user_yaml(full_name="User A", api_key_hash=hash_a),
-            _make_user_yaml(full_name="User B", api_key_hash=hash_b),
+        contacts = _make_contacts_data_by_id(
+            {
+                "id-a": _make_user_yaml(full_name="User A"),
+                "id-b": _make_user_yaml(full_name="User B"),
+            }
         )
-        result = cd.get_api_keys()
+        api_key_file = _write_api_key_file(
+            tmp_path,
+            {
+                "id-a": {"FullName": "User A", "APIKeyHash": hash_a},
+                "id-b": {"FullName": "User B", "APIKeyHash": hash_b},
+            },
+        )
+        result = get_api_keys_data(api_key_file, contacts)
         assert result == {hash_a: "User A", hash_b: "User B"}
 
-    def test_skips_users_without_api_key_hash(self):
-        """get_api_keys() does not raise when a user has no APIKeyHash key."""
-        hash_x = token_to_apikeyhash("tok-x")
-        cd = _make_contacts_data(
-            _make_user_yaml(api_key_hash=hash_x),
-            _make_user_yaml(),  # no APIKeyHash key
-        )
-        result = cd.get_api_keys()
-        assert result == {hash_x: "Test User"}
+    def test_returns_empty_dict_when_path_is_empty(self):
+        contacts = _make_contacts_data_by_id({"id-a": _make_user_yaml(full_name="User A")})
+        assert get_api_keys_data("", contacts) == {}
 
-    def test_returns_empty_dict_when_no_user_has_api_key_hash(self):
-        """get_api_keys() returns {} when no user has any APIKeyHash value."""
-        cd = _make_contacts_data(
-            _make_user_yaml(),
-            _make_user_yaml(),
-        )
-        result = cd.get_api_keys()
-        assert result == {}
-
-    @pytest.mark.parametrize("api_key_hash", [
-        "abcd",
-        "sha256:xyz",
-        "sha256:" + "a" * 63,
-        "sha256:" + "g" * 64,
-    ])
-    def test_rejects_invalid_api_key_hash_values(self, api_key_hash, caplog):
+    def test_skips_entries_with_invalid_api_key_hash(self, tmp_path, caplog):
         import logging
-        cd = _make_contacts_data(_make_user_yaml(api_key_hash=api_key_hash))
+
+        contacts = _make_contacts_data_by_id(
+            {"id-a": _make_user_yaml(full_name="User A")}
+        )
+        api_key_file = _write_api_key_file(
+            tmp_path,
+            {"id-a": {"FullName": "User A", "APIKeyHash": "sha256:xyz"}},
+        )
         with caplog.at_level(logging.WARNING, logger="webapp.contacts_reader"):
-            result = cd.get_api_keys()
+            result = get_api_keys_data(api_key_file, contacts)
         assert result == {}
-        assert "APIKeyHash" in caplog.text
+        assert "invalid APIKeyHash" in caplog.text
+
+    def test_skips_entries_with_unknown_contact_id(self, tmp_path, caplog):
+        import logging
+
+        contacts = _make_contacts_data_by_id(
+            {"id-a": _make_user_yaml(full_name="User A")}
+        )
+        api_key_file = _write_api_key_file(
+            tmp_path,
+            {"id-missing": {"FullName": "User A", "APIKeyHash": token_to_apikeyhash("tok")}},
+        )
+        with caplog.at_level(logging.WARNING, logger="webapp.contacts_reader"):
+            result = get_api_keys_data(api_key_file, contacts)
+        assert result == {}
+        assert "does not match any contacts.yaml ID" in caplog.text
+
+    def test_skips_entries_with_fullname_mismatch(self, tmp_path, caplog):
+        import logging
+
+        contacts = _make_contacts_data_by_id(
+            {"id-a": _make_user_yaml(full_name="User A")}
+        )
+        api_key_file = _write_api_key_file(
+            tmp_path,
+            {"id-a": {"FullName": "Different Name", "APIKeyHash": token_to_apikeyhash("tok")}},
+        )
+        with caplog.at_level(logging.WARNING, logger="webapp.contacts_reader"):
+            result = get_api_keys_data(api_key_file, contacts)
+        assert result == {}
+        assert "FullName mismatch" in caplog.text
+
+    def test_invalid_top_level_type_returns_empty_dict(self, tmp_path, caplog):
+        import logging
+
+        contacts = _make_contacts_data_by_id(
+            {"id-a": _make_user_yaml(full_name="User A")}
+        )
+        path = tmp_path / "api-keys.yaml"
+        path.write_text(yaml.safe_dump([{"id-a": {"FullName": "User A"}}]), encoding="utf-8")
+
+        with caplog.at_level(logging.WARNING, logger="webapp.contacts_reader"):
+            result = get_api_keys_data(str(path), contacts)
+
+        assert result == {}
+        assert "must be a YAML mapping" in caplog.text
 
 
 # ---------------------------------------------------------------------------
@@ -112,66 +154,87 @@ class TestContactsDataGetApiKeys:
 
 def _make_global_data():
     """Return a GlobalData instance configured for in-memory testing."""
-    return GlobalData(config={"TOPOLOGY_DATA_DIR": ".", "CONTACT_DATA_DIR": None})
+    return GlobalData(config={"TOPOLOGY_DATA_DIR": ".", "CONTACT_DATA_DIR": None, "API_KEY_FILE": ""})
 
 
 class TestGlobalDataGetApiKeys:
 
-    def test_returns_a_dict(self):
-        """get_api_keys() returns a dict of hash->owner when hashes exist."""
+    def test_returns_a_dict(self, tmp_path):
+        """get_api_keys() returns a dict of hash->owner when hashes exist in API_KEY_FILE."""
         gd = _make_global_data()
         token_hash = token_to_apikeyhash("tok-1")
-        contacts = _make_contacts_data(_make_user_yaml(full_name="User 1", api_key_hash=token_hash))
-        gd.get_contacts_data = MagicMock(return_value=contacts)
+        contacts = _make_contacts_data_by_id({"id-1": _make_user_yaml(full_name="User 1")})
+        gd.api_key_file = _write_api_key_file(
+            tmp_path,
+            {"id-1": {"FullName": "User 1", "APIKeyHash": token_hash}},
+        )
+        gd.get_contact_db_data = MagicMock(return_value=contacts)
         result = gd.get_api_keys()
         assert isinstance(result, dict)
         assert result == {token_hash: "User 1"}
 
-    def test_calls_get_contacts_data_when_cache_stale_and_stores_result(self):
-        """get_api_keys() fetches contacts when cache is stale and caches the mapping."""
+    def test_calls_get_contact_db_data_when_cache_stale_and_stores_result(self, tmp_path):
+        """get_api_keys() fetches contacts.yaml data when cache is stale and caches the mapping."""
         gd = _make_global_data()
-        # Ensure api_key_set exists and is stale (force_update=True by default)
         gd.api_key_set = CachedData()
         token_hash = token_to_apikeyhash("cached-tok")
-        contacts = _make_contacts_data(_make_user_yaml(full_name="Cached User", api_key_hash=token_hash))
-        gd.get_contacts_data = MagicMock(return_value=contacts)
+        contacts = _make_contacts_data_by_id({"id-1": _make_user_yaml(full_name="Cached User")})
+        gd.api_key_file = _write_api_key_file(
+            tmp_path,
+            {"id-1": {"FullName": "Cached User", "APIKeyHash": token_hash}},
+        )
+        gd.get_contact_db_data = MagicMock(return_value=contacts)
 
         result = gd.get_api_keys()
 
-        gd.get_contacts_data.assert_called_once()
+        gd.get_contact_db_data.assert_called_once()
         assert result is not None
         assert result[token_hash] == "Cached User"
-        # Second call should use the cache and NOT call get_contacts_data again
         result2 = gd.get_api_keys()
-        gd.get_contacts_data.assert_called_once()  # still just one call
+        gd.get_contact_db_data.assert_called_once()
         assert result2 == result
 
-    def test_calls_try_again_on_get_api_keys_exception_and_returns_cached(self):
-        """When get_api_keys() raises, try_again() is called and previous data is returned."""
+    def test_calls_try_again_on_get_api_keys_exception_and_returns_cached(self, tmp_path):
+        """When API key loading raises, try_again() is called and previous data is returned."""
         gd = _make_global_data()
-        # Pre-populate the cache with previous data
         gd.api_key_set = CachedData()
         gd.api_key_set.update({token_to_apikeyhash("old-tok"): "Old User"})
-        # Force the cache to be stale for the next call
         gd.api_key_set.force_update = True
+        gd.api_key_file = _write_api_key_file(
+            tmp_path,
+            {"id-1": {"FullName": "User 1", "APIKeyHash": token_to_apikeyhash("new")}},
+        )
 
-        broken_contacts = MagicMock()
-        broken_contacts.get_api_keys.side_effect = RuntimeError("boom")
-        gd.get_contacts_data = MagicMock(return_value=broken_contacts)
+        gd.get_contact_db_data = MagicMock(return_value=_make_contacts_data_by_id({"id-1": _make_user_yaml(full_name="User 1")}))
 
-        with patch.object(gd.api_key_set, 'try_again', wraps=gd.api_key_set.try_again) as mock_try_again:
-            result = gd.get_api_keys()
-            mock_try_again.assert_called_once()
+        with patch("webapp.models.contacts_reader.get_api_keys_data", side_effect=RuntimeError("boom")):
+            with patch.object(gd.api_key_set, 'try_again', wraps=gd.api_key_set.try_again) as mock_try_again:
+                result = gd.get_api_keys()
+                mock_try_again.assert_called_once()
 
-        # Should return the previously cached data, not raise
         assert result == {token_to_apikeyhash("old-tok"): "Old User"}
 
-    def test_returns_none_when_contacts_data_is_none_on_first_load(self):
-        """get_api_keys() returns None (not an empty set) when get_contacts_data() returns None."""
+    def test_returns_empty_dict_when_contact_db_data_is_none_on_first_load(self, tmp_path):
+        """get_api_keys() returns {} when contact-db data is unavailable on first load."""
         gd = _make_global_data()
         gd.api_key_set = CachedData()
-        gd.get_contacts_data = MagicMock(return_value=None)
+        gd.api_key_file = _write_api_key_file(
+            tmp_path,
+            {"id-1": {"FullName": "User 1", "APIKeyHash": token_to_apikeyhash("tok")}},
+        )
+        gd.get_contact_db_data = MagicMock(return_value=None)
 
         result = gd.get_api_keys()
 
-        assert result is None
+        assert result == {}
+
+    def test_returns_empty_dict_when_api_key_file_unset(self):
+        """get_api_keys() returns an empty mapping when API_KEY_FILE is unset."""
+        gd = _make_global_data()
+        gd.api_key_set = CachedData()
+        gd.api_key_file = ""
+        gd.get_contact_db_data = MagicMock(return_value=None)
+
+        result = gd.get_api_keys()
+
+        assert result == {}

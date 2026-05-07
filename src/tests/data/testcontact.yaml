@@ -1,6 +1,5 @@
 8f4a2c1d9e7b0a6c3f21e5d4b9a8c7e6d5f4a3b2:
   ContactInformation:
-    APIKeyHash: 'sha256:d0f9bf0bd2d94951217f88c2fef39c725e43103cfa684e22a23974cdada13e9d'
     DNs:
     - /DC=org/DC=example/C=US/O=Example University/CN=Alex Morgan X123456
     PrimaryEmail: alex.morgan@example.edu

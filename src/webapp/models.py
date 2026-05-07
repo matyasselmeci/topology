@@ -105,6 +105,7 @@ class GlobalData:
         self.auto_pr_gh_api_user = config.get("AUTO_PR_GH_API_USER")
         self.auto_pr_gh_api_token = config.get("AUTO_PR_GH_API_TOKEN")
         self.csrf_secret_key = config.get("CSRF_SECRET_KEY")
+        self.api_key_file = config.get("API_KEY_FILE", "")
         if config["CONTACT_DATA_DIR"]:
             self.contacts_file = os.path.join(config["CONTACT_DATA_DIR"], "contacts.yaml")
         else:
@@ -274,9 +275,11 @@ class GlobalData:
 
     def get_api_keys(self) -> Optional[Dict[str, str]]:
         if self.api_key_set.should_update():
-            contacts_data = self.get_contacts_data()
+            contact_db_data = self.get_contact_db_data()
             try:
-                self.api_key_set.update(contacts_data.get_api_keys())  # type: ignore
+                self.api_key_set.update(
+                    contacts_reader.get_api_keys_data(self.api_key_file, contact_db_data)
+                )
             except Exception as err:
                 if self.strict:
                     raise
