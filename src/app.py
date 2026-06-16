@@ -2,20 +2,32 @@
 Application File
 """
 import csv
-import flask
-import flask.logging
-from flask import Flask, Response, make_response, request, render_template, redirect, url_for, session
-import hashlib
-from io import StringIO
+import functools
 import logging
 import os
 import random
 import re
 import sys
 import traceback
+import typing as t
 import urllib.parse
 import requests
 import threading
+from io import StringIO
+
+import flask
+import flask.logging
+from flask import (
+    Flask,
+    Response,
+    abort,
+    make_response,
+    redirect,
+    render_template,
+    request,
+    session,
+    url_for,
+)
 from wtforms import ValidationError
 from flask_wtf.csrf import CSRFProtect
 
@@ -205,6 +217,24 @@ def set_cache_control(response):
         response.headers['Cache-Control'] += ', stale-while-revalidate=100'
     return response
 
+
+def need_authorization(route: t.Callable) -> t.Callable:
+    """
+    Decorator for endpoints that require authorization.
+    Raises 403 if not authorized.
+    """
+    @functools.wraps(route)
+    def _need_authorization_wrapped_route(*args, **kwargs):
+        if not _get_authorized():
+            # Would be nice if we could distinguish between no auth information
+            # (401) and not authorized (403) but _get_authorized() returns a
+            # bool so we can't.
+            abort(401)
+        return route(*args, **kwargs)
+
+    return _need_authorization_wrapped_route
+
+
 @app.route('/')
 def homepage():
     return render_template('homepage.html.j2')
@@ -348,6 +378,7 @@ def contacts():
         app.log_exception(sys.exc_info())
         return Response("Error getting users", status=503)  # well, it's better than crashing
 
+
 @app.route('/api/institutions')
 def institutions():
 
@@ -406,6 +437,7 @@ def miscresource_json():
 
     return Response(to_json_bytes(resources), mimetype='application/json')
 
+
 @app.route('/vosummary/xml')
 def vosummary_xml():
     return _get_xml_or_fail(global_data.get_vos_data().get_tree, request.args)
@@ -425,6 +457,48 @@ def rgsummary_xml():
 @app.route('/rgdowntime/xml')
 def rgdowntime_xml():
     return _get_xml_or_fail(global_data.get_topology().get_downtimes, request.args)
+
+
+# Auth only routes for endpoints with contact information.
+# These will fail if there is no auth (as opposed to just returning public-only
+# information).  We can put these endpoints behind an oauth proxy.
+
+
+@app.route('/auth/contacts')
+@cache_control_private
+@need_authorization
+def auth_contacts():
+    return contacts()
+
+
+@app.route('/auth/vosummary/xml')
+@need_authorization
+def auth_vosummary_xml():
+    return vosummary_xml()
+
+@app.route('/auth/vosummary/json')
+@need_authorization
+def auth_vosummary_json():
+    return vosummary_json()
+
+
+@app.route('/auth/rgsummary/xml')
+@need_authorization
+def auth_rgsummary_xml():
+    return rgsummary_xml()
+
+
+@app.route('/auth/rgdowntime/xml')
+@need_authorization
+def auth_rgdowntime_xml():
+    return rgdowntime_xml()
+
+
+@app.route('/auth/miscuser/xml')
+@cache_control_private
+@need_authorization
+def auth_miscuser_xml():
+    return miscuser_xml()
 
 
 @app.route('/rgdowntime/ical')
@@ -632,6 +706,15 @@ def oasis_managers():
                         "OASIS Managers info unavailable", status=503)
     mgrs = get_oasis_manager_endpoint_info(global_data, vo, cilogon_pass)
     return Response(to_json_bytes(mgrs), mimetype='application/json')
+
+
+# /oasis-managers/json already requires auth but add another endpoint under /auth
+# to help with the proxying.
+@app.route("/auth/oasis-managers/json")
+@cache_control_private
+@need_authorization
+def auth_oasis_managers_json():
+    return oasis_managers()
 
 
 def _get_cache_authfile(public_only):
@@ -1160,6 +1243,9 @@ def _get_authorized():
     if _authorize_dn_credentials():
         return True
 
+    if _authorize_oauth():
+        return True
+
     # If it gets here, then it is not authorized
     return default_authorized
 
@@ -1228,6 +1314,11 @@ def _authorize_dn_credentials() -> bool:
                 if app and app.logger:
                     app.logger.debug("Rejected %s", client_dn)
 
+    return False
+
+
+def _authorize_oauth() -> bool:
+    # Stub
     return False
 
 
