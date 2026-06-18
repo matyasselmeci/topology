@@ -2,31 +2,65 @@
 Application File
 """
 import csv
-import flask
-import flask.logging
-from flask import Flask, Response, make_response, request, render_template, redirect, url_for, session
-from io import StringIO
 import logging
 import os
 import random
 import re
 import sys
+import threading
 import traceback
 import urllib.parse
+from io import StringIO
+
+import flask
+import flask.logging
 import requests
-import threading
-from wtforms import ValidationError
+from flask import (
+    Flask,
+    Response,
+    make_response,
+    redirect,
+    render_template,
+    request,
+    session,
+    url_for,
+)
 from flask_wtf.csrf import CSRFProtect
+from wtforms import ValidationError
 
 from webapp import default_config
-from webapp.common import readfile, to_xml_bytes, to_json_bytes, Filters, support_cors, simplify_attr_list, is_null, \
-    escape, cache_control_private, PreJSON, is_true, GRIDTYPE_1, GRIDTYPE_2, NamespacesFilters
+from webapp.common import (
+    GRIDTYPE_1,
+    GRIDTYPE_2,
+    Filters,
+    NamespacesFilters,
+    PreJSON,
+    cache_control_private,
+    escape,
+    is_null,
+    is_true,
+    readfile,
+    simplify_attr_list,
+    support_cors,
+    to_json_bytes,
+    to_xml_bytes,
+)
+from webapp.exceptions import DataError, ResourceMissingServices, ResourceNotRegistered
 from webapp.flask_common import create_accepted_response
-from webapp.exceptions import DataError, ResourceNotRegistered, ResourceMissingServices
-from webapp.forms import GenerateDowntimeForm, GenerateResourceGroupDowntimeForm, GenerateProjectForm
+from webapp.forms import (
+    GenerateDowntimeForm,
+    GenerateProjectForm,
+    GenerateResourceGroupDowntimeForm,
+)
+from webapp.github import (
+    GitHubAuth,
+    GithubReferenceExistsException,
+    GithubRequestException,
+    GithubUser,
+    create_file_pr,
+)
 from webapp.models import GlobalData
 from webapp.oasis_managers import get_oasis_manager_endpoint_info
-from webapp.github import create_file_pr, update_file_pr, GithubUser, GitHubAuth, GitHubRepoAPI, GithubRequestException, GithubReferenceExistsException, GithubNotFoundException
 
 try:
     import stashcache
@@ -1131,8 +1165,9 @@ def _get_authorized():
 
 
 try:
-    from werkzeug.middleware.dispatcher import DispatcherMiddleware
     from prometheus_client import make_wsgi_app
+    from werkzeug.middleware.dispatcher import DispatcherMiddleware
+
     # Enable prometheus integration with the topology webapp
     app.wsgi_app = DispatcherMiddleware(app.wsgi_app, {
         '/metrics': make_wsgi_app()
